@@ -88,12 +88,42 @@ settings:
   base:
     CODE_SIGN_IDENTITY: "MyApp Dev"   # Must match CERT_NAME above
     CODE_SIGNING_ALLOWED: "YES"
+    CODE_SIGN_STYLE: "Manual"
+    ENABLE_HARDENED_RUNTIME: "NO"     # MUST be NO for dev builds — hardened runtime
+                                      # blocks self-signed certs from loading test bundles
+                                      # and causes "bundle format unrecognized" codesign errors
 ```
+
+**CRITICAL — UI test target (`bundle.ui-testing`) requires extra settings:**
+
+UI test targets must NOT have `BUNDLE_LOADER` or `TEST_HOST` (those are for unit tests only).
+XcodeGen auto-adds them when it sees a dependency on an app target. Override them to empty:
+
+```yaml
+  MyAppUITests:
+    type: bundle.ui-testing
+    dependencies:
+      - target: MyApp
+    settings:
+      base:
+        BUNDLE_LOADER: ""              # MUST be empty — UI tests run in a separate runner process
+        TEST_HOST: ""                  # MUST be empty — not injected into the app
+        CODE_SIGN_IDENTITY: "MyApp Dev"
+        CODE_SIGNING_ALLOWED: "YES"
+        CODE_SIGN_STYLE: "Manual"
+```
+
+Without these overrides:
+- `BUNDLE_LOADER` causes Xcode to embed `PercevTests.xctest` inside `MyApp.app/Contents/PlugIns/`
+- `codesign` then fails with "bundle format unrecognized, invalid, or unsuitable" on the embedded `.xctest`
+- UI tests never run because the build itself fails
 
 **Xcode project (manual):**
 1. Select target > Build Settings
 2. Set "Code Signing Identity" to the certificate name (e.g., "MyApp Dev")
 3. Ensure "Code Signing Allowed" is YES
+4. Set "Enable Hardened Runtime" to NO
+5. For UI test targets: clear "Bundle Loader" and "Test Host" fields
 
 ### Step 3: First Run — Grant Permissions Once
 
@@ -151,6 +181,13 @@ fi
 security find-identity -v -p codesigning
 ```
 If empty, the import or trust step may have failed. Re-run the setup commands.
+
+### "bundle format unrecognized, invalid, or unsuitable" during codesign
+This happens when a `.xctest` unit test bundle gets embedded inside the app's `PlugIns/` directory.
+- **Cause:** `BUNDLE_LOADER`/`TEST_HOST` set on a UI test target, or stale DerivedData
+- **Fix 1:** Clear `BUNDLE_LOADER` and `TEST_HOST` on UI test targets (see Step 2 above)
+- **Fix 2:** Clean DerivedData: `rm -rf ~/Library/Developer/Xcode/DerivedData/MyApp-*`
+- **Fix 3:** Set `ENABLE_HARDENED_RUNTIME: "NO"` — hardened runtime with self-signed certs causes codesign to reject embedded bundles
 
 ### Permissions still revoked after rebuild
 - Verify `CODE_SIGN_IDENTITY` in build settings matches the certificate name exactly

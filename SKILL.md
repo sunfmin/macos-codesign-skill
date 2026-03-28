@@ -118,12 +118,13 @@ Without these overrides:
 - `codesign` then fails with "bundle format unrecognized, invalid, or unsuitable" on the embedded `.xctest`
 - UI tests never run because the build itself fails
 
-**Xcode project (manual):**
-1. Select target > Build Settings
-2. Set "Code Signing Identity" to the certificate name (e.g., "MyApp Dev")
-3. Ensure "Code Signing Allowed" is YES
-4. Set "Enable Hardened Runtime" to NO
-5. For UI test targets: clear "Bundle Loader" and "Test Host" fields
+**NEVER edit Xcode project settings manually.** Always update `project.yml` and run `xcodegen generate`.
+The `.xcodeproj` is a generated artifact — manual edits are overwritten on the next generate.
+
+After updating `project.yml`, regenerate:
+```bash
+xcodegen generate
+```
 
 ### Step 3: First Run — Grant Permissions Once
 
@@ -190,8 +191,9 @@ This happens when a `.xctest` unit test bundle gets embedded inside the app's `P
 - **Fix 3:** Set `ENABLE_HARDENED_RUNTIME: "NO"` — hardened runtime with self-signed certs causes codesign to reject embedded bundles
 
 ### Permissions still revoked after rebuild
-- Verify `CODE_SIGN_IDENTITY` in build settings matches the certificate name exactly
-- Check that `CODE_SIGNING_ALLOWED` is `YES` (not `NO`)
+- Verify `CODE_SIGN_IDENTITY` in `project.yml` matches the certificate name exactly
+- Check that `CODE_SIGNING_ALLOWED` is `"YES"` (not `"NO"`) in `project.yml`
+- Run `xcodegen generate` after any `project.yml` change
 - Confirm you're not accidentally overriding with `-` in a scheme or CI config
 
 ### "User interaction is not allowed" during build
@@ -202,11 +204,10 @@ security unlock-keychain ~/Library/Keychains/login.keychain-db
 
 ### Removing the certificate
 ```bash
-# Find and delete from keychain (use Keychain Access.app for GUI)
+# Delete from keychain
 security delete-identity -c "MyApp Dev"
-# Then revert project to ad-hoc signing:
-# CODE_SIGN_IDENTITY: "-"
 ```
+Then revert `project.yml` to ad-hoc signing (`CODE_SIGN_IDENTITY: "-"`) and run `xcodegen generate`.
 
 ## Why This Matters for Automated Testing
 
